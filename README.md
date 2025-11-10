@@ -109,25 +109,5 @@ Your submission code has expired (valid for 7 days). Get a new code from the web
 Your project is too large. Ensure you're not including build artifacts or dependencies.
 
 
-
-## Development
-
-### Release Build
-
-```bash
-cargo build --release
-```
-
-### Updating install.sh
-
-If you modify `install.sh`, sync it to the website:
-
-```bash
-./sync-install-script.sh
-```
-
-Then commit and push changes in both repos (CLI and frontend).
-
 ## License
-
 MIT
