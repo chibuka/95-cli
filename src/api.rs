@@ -1,8 +1,8 @@
 use reqwest::blocking::{Client, multipart};
 use serde::Deserialize;
 
-const API_URL: &str = "https://api.ninefive.dev";
-const FRONTEND_URL: &str = "https://ninefive.dev";
+const API_URL: &str = "https://api.95ninefive.dev";
+const FRONTEND_URL: &str = "https://95ninefive.dev";
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
