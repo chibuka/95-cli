@@ -1,5 +1,5 @@
 [package]
-name = "95-cli"
+name = "ninefive-cli"
 version = "0.1.0"
 edition = "2021"
 description = "CLI tool for ninefive code challenge platform - submit solutions without manual zipping"
