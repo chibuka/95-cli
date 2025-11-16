@@ -1,8 +1,8 @@
 use reqwest::blocking::{Client, multipart};
 use serde::Deserialize;
 
-const API_URL: &str = "https://api.95ninefive.dev";
-const FRONTEND_URL: &str = "https://95ninefive.dev";
+const API_URL: &str = "http://localhost:8080";
+const FRONTEND_URL: &str = "http://localhost:3000";
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -52,14 +52,30 @@ pub fn submit_code(submission_code: &str, zip_data: &[u8], verbose: bool) -> any
 
     let url = format!("{}/api/submissions/cli", API_URL);
 
+    if verbose {
+        eprintln!("\n=== DEBUG: SUBMISSION REQUEST ===");
+        eprintln!("POST {}", url);
+        eprintln!("Submission code: {}", submission_code);
+        eprintln!("Archive size: {} bytes", zip_data.len());
+    }
+
     let response = client
         .post(&url)
         .multipart(form)
         .send()?;
 
+    let status = response.status();
+
+    if verbose {
+        eprintln!("\n=== DEBUG: SUBMISSION RESPONSE ===");
+        eprintln!("Status: {}", status);
+    }
+
     if !response.status().is_success() {
-        let status = response.status();
         let error_text = response.text()?;
+        if verbose {
+            eprintln!("Error body: {}", error_text);
+        }
         return Err(anyhow::anyhow!("API error ({}): {}", status, error_text));
     }
 
