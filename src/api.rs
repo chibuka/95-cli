@@ -1,8 +1,8 @@
-use reqwest::blocking::{Client, multipart};
+use reqwest::blocking::{multipart, Client};
 use serde::Deserialize;
 
-const API_URL: &str = "http://localhost:8080";
-const FRONTEND_URL: &str = "http://localhost:3000";
+const API_URL: &str = "http://api.95ninefive.dev";
+const FRONTEND_URL: &str = "http://95ninefive.dev";
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -39,7 +39,11 @@ pub struct SubmissionMetadata {
 }
 
 /// Submit code to the ninefive API and return full metadata
-pub fn submit_code(submission_code: &str, zip_data: &[u8], verbose: bool) -> anyhow::Result<SubmissionMetadata> {
+pub fn submit_code(
+    submission_code: &str,
+    zip_data: &[u8],
+    verbose: bool,
+) -> anyhow::Result<SubmissionMetadata> {
     let client = Client::new();
 
     let part = multipart::Part::bytes(zip_data.to_vec())
@@ -59,10 +63,7 @@ pub fn submit_code(submission_code: &str, zip_data: &[u8], verbose: bool) -> any
         eprintln!("Archive size: {} bytes", zip_data.len());
     }
 
-    let response = client
-        .post(&url)
-        .multipart(form)
-        .send()?;
+    let response = client.post(&url).multipart(form).send()?;
 
     let status = response.status();
 
@@ -83,24 +84,29 @@ pub fn submit_code(submission_code: &str, zip_data: &[u8], verbose: bool) -> any
     let submission: SubmissionResponse = serde_json::from_str(&response_text)?;
 
     let debug_info = if verbose {
-        Some((response_text.clone(), submission.id, submission.challenge_id, submission.programming_language.clone(), submission.target_stage))
+        Some((
+            response_text.clone(),
+            submission.id,
+            submission.challenge_id,
+            submission.programming_language.clone(),
+            submission.target_stage,
+        ))
     } else {
         None
     };
 
     let challenge_url_result = get_challenge_metadata(submission_code, verbose);
 
-    let (challenge_name, challenge_slug, challenge_url, challenge_error) = match challenge_url_result {
-        Ok((name, slug, url)) => (name, slug, url, None),
-        Err(e) => {
-            (
+    let (challenge_name, challenge_slug, challenge_url, challenge_error) =
+        match challenge_url_result {
+            Ok((name, slug, url)) => (name, slug, url, None),
+            Err(e) => (
                 "Unknown Challenge".to_string(),
                 "unknown".to_string(),
                 format!("{}/challenges", FRONTEND_URL),
-                Some(e.to_string())
-            )
-        },
-    };
+                Some(e.to_string()),
+            ),
+        };
 
     if verbose {
         if let Some((resp, id, chal_id, lang, stage)) = debug_info {
@@ -142,8 +148,13 @@ struct Challenge {
 }
 
 /// Decode submission code and get full challenge metadata
-fn get_challenge_metadata(submission_code: &str, verbose: bool) -> anyhow::Result<(String, String, String)> {
-    let token = submission_code.strip_prefix("95-").unwrap_or(submission_code);
+fn get_challenge_metadata(
+    submission_code: &str,
+    verbose: bool,
+) -> anyhow::Result<(String, String, String)> {
+    let token = submission_code
+        .strip_prefix("95-")
+        .unwrap_or(submission_code);
 
     // JWT format: header.payload.signature
     let parts: Vec<&str> = token.split('.').collect();
@@ -154,7 +165,7 @@ fn get_challenge_metadata(submission_code: &str, verbose: bool) -> anyhow::Resul
     let payload_base64 = parts[1];
     let payload_bytes = base64::Engine::decode(
         &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        payload_base64
+        payload_base64,
     )?;
     let payload_str = String::from_utf8(payload_bytes)?;
     let payload: JwtPayload = serde_json::from_str(&payload_str)?;
@@ -200,9 +211,7 @@ fn get_challenge_metadata(submission_code: &str, verbose: bool) -> anyhow::Resul
     let language_lower = payload.language.to_lowercase();
     let challenge_url = format!(
         "{}/challenges/{}/{}",
-        FRONTEND_URL,
-        challenge.slug,
-        language_lower
+        FRONTEND_URL, challenge.slug, language_lower
     );
 
     if verbose {
