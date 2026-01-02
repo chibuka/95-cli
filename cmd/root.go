@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
+Copyright © 2025 MAROUANE BOUFAROUJ <boufaroujmarouan@gmail.com>
 */
 package cmd
 
@@ -10,23 +10,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "95-cli",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Use:   "95",
+	Short: "Practice coding challenges and level up your skills",
+	Long: `95 CLI - Build your coding skills, one challenge at a time
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+The 95 CLI lets you practice coding challenges from your terminal.
+Your code runs locally, gets validated server-side, and tracks your progress.
+
+Quick Start:
+  1. Authenticate:      95 login
+  2. Setup project:     95 init --cmd "python main.py"
+  3. Test locally:      95 test <stage-uuid>
+  4. Submit solution:   95 run <stage-uuid>
+
+For more information, visit: https://95.dev`,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -35,15 +35,5 @@ func Execute() {
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.95-cli.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	
 	config.Init()
 }
