@@ -59,7 +59,6 @@ After tests pass, use '95 run' to submit your solution and track progress.`,
 
 		// Run tests for all prerequisite stages
 		totalTests := 0
-		passedTests := 0
 
 		for stepIdx, stageInfo := range cascadedConfig.StagesToRun {
 			// Parse test config for this stage
@@ -85,27 +84,45 @@ After tests pass, use '95 run' to submit your solution and track progress.`,
 					Stdin:    test.Stdin,
 				}
 
-				result, err := runner.RunTest(projectCfg.RunCommand, test.Stdin, test.TimeoutSeconds)
-				if err != nil {
-					failed := true
+				// Execute setup operations
+				if err := runner.ExecuteSetup(test.Setup); err != nil {
 					ch <- messages.ResolveTestMsg{
 						StepIndex: stepIdx,
 						TestIndex: testIdx,
-						Passed:    &failed,
+						Passed:    nil, // No validation in test mode
+						Stdin:     test.Stdin,
+						Stdout:    "",
+						Stderr:    fmt.Sprintf("Setup failed: %v", err),
+						ExitCode:  -1,
+					}
+					continue
+				}
+
+				// Ensure cleanup runs even if test fails
+				defer func(cleanup *client.TestCleanup) {
+					if cleanup != nil {
+						if err := runner.ExecuteCleanup(cleanup); err != nil {
+							fmt.Printf("Warning: cleanup failed: %v\n", err)
+						}
+					}
+				}(test.Cleanup)
+
+				result, err := runner.RunTest(projectCfg.RunCommand, test.Stdin, test.TimeoutSeconds)
+				if err != nil {
+					ch <- messages.ResolveTestMsg{
+						StepIndex: stepIdx,
+						TestIndex: testIdx,
+						Passed:    nil, // No validation in test mode - just show output
 						Stdin:     test.Stdin,
 						Stdout:    "",
 						Stderr:    err.Error(),
 						ExitCode:  -1,
 					}
 				} else {
-					passed := result.ExitCode == 0
-					if passed {
-						passedTests++
-					}
 					ch <- messages.ResolveTestMsg{
 						StepIndex: stepIdx,
 						TestIndex: testIdx,
-						Passed:    &passed,
+						Passed:    nil, // No validation in test mode - just show output
 						Stdin:     test.Stdin,
 						Stdout:    result.Stdout,
 						Stderr:    result.Stderr,
@@ -115,9 +132,8 @@ After tests pass, use '95 run' to submit your solution and track progress.`,
 			}
 		}
 
-		// Complete without submission
-		success := passedTests == totalTests
-		done(success, totalTests, passedTests, fmt.Sprintf("Run '95 run %s' to submit your results", stageUuid))
+		// Complete without submission (no validation, just showing outputs)
+		done(true, totalTests, 0, fmt.Sprintf("Run '95 run %s' to submit your results", stageUuid))
 		return nil
 	},
 }

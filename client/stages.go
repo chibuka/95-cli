@@ -38,7 +38,23 @@ type Test struct {
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	// in case testType is "http_server"
 	HttpRequests []HttpRequest `json:"httpRequests,omitempty"`
+	// Setup and cleanup operations
+	Setup   *TestSetup   `json:"setup,omitempty"`
+	Cleanup *TestCleanup `json:"cleanup,omitempty"`
 	// Note: assertions are stripped by backend
+}
+
+// TestSetup defines operations to perform before running a test
+type TestSetup struct {
+	CreateDirs  []string          `json:"createDirs,omitempty"`
+	CreateFiles map[string]string `json:"createFiles,omitempty"` // map of path -> content
+	DeleteFiles []string          `json:"deleteFiles,omitempty"` // files to delete before test (ensure clean slate)
+}
+
+// TestCleanup defines operations to perform after running a test
+type TestCleanup struct {
+	DeleteDirs  []string `json:"deleteDirs,omitempty"`
+	DeleteFiles []string `json:"deleteFiles,omitempty"`
 }
 
 type TestResult struct {

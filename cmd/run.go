@@ -97,6 +97,34 @@ Tip: Use '95 test' first to validate locally before submitting.`,
 				Stdin:    test.Stdin,
 				}
 
+
+		// Execute setup operations
+		if err := runner.ExecuteSetup(test.Setup); err != nil {
+			ch <- messages.ResolveTestMsg{
+				StepIndex: stepIdx,
+				TestIndex: testIdx,
+				Passed:    nil,
+				Stdin:     test.Stdin,
+				Stdout:    "",
+				Stderr:    fmt.Sprintf("Setup failed: %v", err),
+				ExitCode:  -1,
+			}
+			results = append(results, client.TestResult{
+				TestName: test.TestName,
+				ExitCode: -1,
+				Stderr:   fmt.Sprintf("Setup failed: %v", err),
+			})
+			continue
+		}
+
+		// Ensure cleanup runs even if test fails
+		defer func(cleanup *client.TestCleanup) {
+			if cleanup != nil {
+				if err := runner.ExecuteCleanup(cleanup); err != nil {
+					fmt.Printf("Warning: cleanup failed: %v\n", err)
+				}
+			}
+		}(test.Cleanup)
 				result, err := runner.RunTest(projectCfg.RunCommand, test.Stdin, test.TimeoutSeconds)
 				if err != nil {
 					// Test execution error (not validation failure)
