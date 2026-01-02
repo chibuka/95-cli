@@ -1,39 +1,36 @@
 package messages
 
-// Message types for Bubble Tea communication
-// Matching boot.dev's message-based architecture
+// Msg is a marker interface for all message types
+type Msg interface{}
 
-// StartStepMsg is sent when a step begins
+// StartStepMsg is sent when a stage begins
 type StartStepMsg struct {
-	Step string
-}
-
-// ResolveStepMsg is sent when a step completes
-type ResolveStepMsg struct {
-	Index  int
-	Passed *bool
+	StageNumber int
+	StageName   string
 }
 
 // StartTestMsg is sent when a test begins execution
 type StartTestMsg struct {
-	Text string
+	TestName string
+	Stdin    string
 }
 
 // ResolveTestMsg is sent when a test completes
 type ResolveTestMsg struct {
 	StepIndex int
 	TestIndex int
-	Passed    *bool
+	Passed    *bool  // nil if not yet validated, true/false after backend validation
 	Stdin     string
 	Stdout    string
 	Stderr    string
 	ExitCode  int
 }
 
-// DoneStepMsg is sent when everything is complete
-type DoneStepMsg struct {
-	Success     bool
-	TotalTests  int
-	PassedTests int
-	Feedback    string
+// ResolveStepMsg is sent when a stage/step completes
+type ResolveStepMsg struct {
+	Index  int
+	Passed *bool
 }
+
+// DoneStepMsg is sent when everything is complete
+type DoneStepMsg struct{}

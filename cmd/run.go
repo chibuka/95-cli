@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chibuka/95-cli/client"
 	"github.com/chibuka/95-cli/internal/config"
 	"github.com/chibuka/95-cli/internal/runner"
@@ -63,7 +62,7 @@ Tip: Use '95 test' first to validate locally before submitting.`,
 			cascadedConfig.TargetStageNumber, len(cascadedConfig.StagesToRun))
 
 		// Start renderer
-		ch := make(chan tea.Msg, 10)
+		ch := make(chan messages.Msg, 10)
 		done := ui.StartRenderer(true, ch)
 
 		// Run tests for all prerequisite stages
@@ -83,7 +82,8 @@ Tip: Use '95 test' first to validate locally before submitting.`,
 
 			// Send start step message
 			ch <- messages.StartStepMsg{
-				Step: fmt.Sprintf("Stage %d: %s (%d tests)", stageInfo.StageNumber, stageInfo.StageName, len(testConfig.Tests)),
+				StageNumber: stageInfo.StageNumber,
+			StageName:   stageInfo.StageName,
 			}
 
 			// Run tests for this stage
@@ -93,7 +93,8 @@ Tip: Use '95 test' first to validate locally before submitting.`,
 			for testIdx, test := range testConfig.Tests {
 				// Start test
 				ch <- messages.StartTestMsg{
-					Text: test.TestName,
+					TestName: test.TestName,
+				Stdin:    test.Stdin,
 				}
 
 				result, err := runner.RunTest(projectCfg.RunCommand, test.Stdin, test.TimeoutSeconds)

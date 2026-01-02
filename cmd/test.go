@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/chibuka/95-cli/client"
 	"github.com/chibuka/95-cli/internal/config"
 	"github.com/chibuka/95-cli/internal/runner"
@@ -55,50 +54,58 @@ After tests pass, use '95 run' to submit your solution and track progress.`,
 		}
 
 		// Start renderer (not submitting)
-		ch := make(chan tea.Msg, 10)
+		ch := make(chan messages.Msg, 10)
 		done := ui.StartRenderer(false, ch)
 
 		// Run tests for all prerequisite stages
 		totalTests := 0
+		passedTests := 0
 
 		for stepIdx, stageInfo := range cascadedConfig.StagesToRun {
 			// Parse test config for this stage
 			testConfig, err := client.ParseStageTests(stageInfo)
 			if err != nil {
-				done(false, totalTests, 0, fmt.Sprintf("Failed to parse tests for stage %d: %v", stageInfo.StageNumber, err))
-				return nil
+				done(false, 0, 0, fmt.Sprintf("Failed to parse tests for stage %d: %v", stageInfo.StageNumber, err))
+				return fmt.Errorf("failed to parse tests: %w", err)
 			}
 
 			totalTests += len(testConfig.Tests)
 
-			// Send start step message
+			// Send start stage message
 			ch <- messages.StartStepMsg{
-				Step: fmt.Sprintf("Stage %d: %s (%d tests)", stageInfo.StageNumber, stageInfo.StageName, len(testConfig.Tests)),
+				StageNumber: stageInfo.StageNumber,
+				StageName:   stageInfo.StageName,
 			}
 
 			// Run tests for this stage
 			for testIdx, test := range testConfig.Tests {
 				// Start test
 				ch <- messages.StartTestMsg{
-					Text: fmt.Sprintf("%s\nStdin:\n%s\n", test.TestName, test.Stdin),
+					TestName: test.TestName,
+					Stdin:    test.Stdin,
 				}
 
 				result, err := runner.RunTest(projectCfg.RunCommand, test.Stdin, test.TimeoutSeconds)
 				if err != nil {
+					failed := true
 					ch <- messages.ResolveTestMsg{
 						StepIndex: stepIdx,
 						TestIndex: testIdx,
-						Passed:    nil,
+						Passed:    &failed,
 						Stdin:     test.Stdin,
 						Stdout:    "",
 						Stderr:    err.Error(),
 						ExitCode:  -1,
 					}
 				} else {
+					passed := result.ExitCode == 0
+					if passed {
+						passedTests++
+					}
 					ch <- messages.ResolveTestMsg{
 						StepIndex: stepIdx,
 						TestIndex: testIdx,
-						Passed:    nil,
+						Passed:    &passed,
 						Stdin:     test.Stdin,
 						Stdout:    result.Stdout,
 						Stderr:    result.Stderr,
@@ -109,7 +116,8 @@ After tests pass, use '95 run' to submit your solution and track progress.`,
 		}
 
 		// Complete without submission
-		fmt.Printf("Run '95 run %s' to submit your results\n", stageUuid)
+		success := passedTests == totalTests
+		done(success, totalTests, passedTests, fmt.Sprintf("Run '95 run %s' to submit your results", stageUuid))
 		return nil
 	},
 }
