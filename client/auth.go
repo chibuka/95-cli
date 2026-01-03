@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/chibuka/95-cli/internal/config"
@@ -28,16 +29,19 @@ type AuthResponse struct {
 func Login() error {
 	codeChan := make(chan string)
 
+	// Get API URL from environment or use default
+	apiURL := getAPIURL()
+
 	// Start local server
 	fmt.Println("Starting local server on port 9417...")
-	err := startLocalServer(codeChan)
+	err := startLocalServer(codeChan, apiURL)
 	if err != nil {
 		return err
 	}
 
 	// Open the browser to CLI login endpoint (sets session flag, then redirects to GitHub OAuth)
-	fmt.Println("Opening browser for GitHub authentication...")
-	err = browser.OpenURL("http://localhost:8080/oauth2/cli-login")
+	fmt.Printf("Opening browser for GitHub authentication at %s...\n", apiURL)
+	err = browser.OpenURL(fmt.Sprintf("%s/oauth2/cli-login", apiURL))
 	if err != nil {
 		return err
 	}
@@ -56,13 +60,13 @@ func Login() error {
 	otp := <-codeChan
 	fmt.Println("✓ OTP received!")
 
-	auth, err := LoginWithCode(otp)
+	auth, err := LoginWithCode(otp, apiURL)
 	if err != nil {
 		return err
 	}
 
 	cfg := config.Config{
-		APIUrl:       "http://localhost:8080",
+		APIUrl:       apiURL,
 		AccessToken:  auth.AccessToken,
 		RefreshToken: auth.RefreshToken,
 		UserId:       auth.UserId,
@@ -76,23 +80,35 @@ func Login() error {
 	return nil
 }
 
-func startLocalServer(codeChan chan string) error {
+// getAPIURL returns API URL from environment variable or default production URL
+func getAPIURL() string {
+	if apiURL := os.Getenv("API_URL"); apiURL != "" {
+		return apiURL
+	}
+	// Check for DEV mode
+	if os.Getenv("DEV_MODE") == "true" {
+		return config.LocalAPIURL
+	}
+	return config.DefaultAPIURL
+}
+
+func startLocalServer(codeChan chan string, apiURL string) error {
 	server := http.Server{
 		Addr: "localhost:9417",
 	}
 
-	http.HandleFunc("/submit", handleSubmit(codeChan))
+	http.HandleFunc("/submit", handleSubmit(codeChan, apiURL))
 	go server.ListenAndServe()
 
 	return nil
 }
 
-func handleSubmit(codeChan chan string) http.HandlerFunc {
+func handleSubmit(codeChan chan string, apiURL string) http.HandlerFunc {
 	return func(res http.ResponseWriter, req *http.Request) {
 		fmt.Printf("📥 Received %s request to /submit\n", req.Method)
 
-		// Add CORS headers to allow browser requests
-		res.Header().Set("Access-Control-Allow-Origin", "*")
+		// Add CORS headers - ONLY allow requests from our API domain for security
+		res.Header().Set("Access-Control-Allow-Origin", apiURL)
 		res.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		res.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -126,15 +142,15 @@ func handleSubmit(codeChan chan string) http.HandlerFunc {
 	}
 }
 
-func LoginWithCode(otp string) (*AuthResponse, error) {
+func LoginWithCode(otp string, apiURL string) (*AuthResponse, error) {
 	reqBody := AuthRequest{Otp: otp}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: we need to make this dynamic (in prod this should be "api.95ninefive.dev")
-	res, err := http.Post("http://localhost:8080/api/auth/otp/login", "application/json", bytes.NewReader(jsonData))
+	loginURL := fmt.Sprintf("%s/api/auth/otp/login", apiURL)
+	res, err := http.Post(loginURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -159,14 +175,15 @@ func LoginWithCode(otp string) (*AuthResponse, error) {
 }
 
 // RefreshToken exchanges a refresh token for a new access token
-func RefreshToken(refreshToken string) (*AuthResponse, error) {
+func RefreshToken(refreshToken string, apiURL string) (*AuthResponse, error) {
 	reqBody := map[string]string{"refreshToken": refreshToken}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal refresh request: %w", err)
 	}
 
-	res, err := http.Post("http://localhost:8080/api/auth/refresh", "application/json", bytes.NewReader(jsonData))
+	refreshURL := fmt.Sprintf("%s/api/auth/refresh", apiURL)
+	res, err := http.Post(refreshURL, "application/json", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to call refresh endpoint: %w", err)
 	}
@@ -189,8 +206,9 @@ func RefreshToken(refreshToken string) (*AuthResponse, error) {
 	return &authResponse, nil
 }
 
-func Logout(accessToken string) error {
-	req, err := http.NewRequest("POST", "http://localhost:8080/api/auth/logout", nil)
+func Logout(accessToken string, apiURL string) error {
+	logoutURL := fmt.Sprintf("%s/api/auth/logout", apiURL)
+	req, err := http.NewRequest("POST", logoutURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create logout request: %w", err)
 	}

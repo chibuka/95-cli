@@ -102,7 +102,8 @@ type TestFailure struct {
 // FetchCascadedTests fetches test configurations for all prerequisite stages
 // When requesting stage X, this returns tests for stages 1..X to ensure backward compatibility
 func FetchCascadedTests(stageUuid string, cfg *config.Config) (*CascadedTestConfig, error) {
-	endpoint := fmt.Sprintf("http://localhost:8080/api/stages/%s/tests", stageUuid)
+	apiURL := cfg.GetAPIURL()
+	endpoint := fmt.Sprintf("%s/api/stages/%s/tests", apiURL, stageUuid)
 
 	// First attempt with current access token
 	req, err := http.NewRequest("GET", endpoint, nil)
@@ -133,7 +134,7 @@ func FetchCascadedTests(stageUuid string, cfg *config.Config) (*CascadedTestConf
 		}
 
 		// Attempt to refresh the token
-		authResponse, err := RefreshToken(cfg.RefreshToken)
+		authResponse, err := RefreshToken(cfg.RefreshToken, apiURL)
 		if err != nil {
 			return nil, fmt.Errorf("token refresh failed: %w.\n\n→ Run '95 login' to re-authenticate", err)
 		}
@@ -229,6 +230,7 @@ func FetchTests(stageUuid string, cfg *config.Config) (*TestConfig, error) {
 }
 
 func SubmitResults(stageUuid string, language string, cfg *config.Config, results []TestResult, targetStageNumber *int) (*SubmissionResult, error) {
+	apiURL := cfg.GetAPIURL()
 	submissionReq := SubmissionRequest{
 		StageUuid:         stageUuid,
 		Language:          language,
@@ -240,8 +242,10 @@ func SubmitResults(stageUuid string, language string, cfg *config.Config, result
 		return nil, fmt.Errorf("failed to marshal submission request: %w", err)
 	}
 
+	validateURL := fmt.Sprintf("%s/api/stages/validate", apiURL)
+
 	// First attempt with current access token
-	req, err := http.NewRequest("POST", "http://localhost:8080/api/stages/validate", bytes.NewReader(submissionData))
+	req, err := http.NewRequest("POST", validateURL, bytes.NewReader(submissionData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -269,7 +273,7 @@ func SubmitResults(stageUuid string, language string, cfg *config.Config, result
 		}
 
 		// Attempt to refresh the token
-		authResponse, err := RefreshToken(cfg.RefreshToken)
+		authResponse, err := RefreshToken(cfg.RefreshToken, apiURL)
 		if err != nil {
 			return nil, fmt.Errorf("token refresh failed: %w. Please run '95cli login' to re-authenticate", err)
 		}
@@ -286,7 +290,7 @@ func SubmitResults(stageUuid string, language string, cfg *config.Config, result
 		fmt.Println("✓ Token refreshed successfully!")
 
 		// Retry the submission with new token
-		retryReq, err := http.NewRequest("POST", "http://localhost:8080/api/stages/validate", bytes.NewReader(submissionData))
+		retryReq, err := http.NewRequest("POST", validateURL, bytes.NewReader(submissionData))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create retry request: %w", err)
 		}

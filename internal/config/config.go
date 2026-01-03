@@ -10,12 +10,35 @@ import (
 
 const ConfigPath = "~/.95cli/config.json"
 
+// DefaultAPIURL is the production API endpoint
+const DefaultAPIURL = "https://api.95ninefive.dev"
+
+// LocalAPIURL is the development API endpoint
+const LocalAPIURL = "http://localhost:8080"
+
 type Config struct {
 	APIUrl       string `json:"api_url" mapstructure:"api_url"`
 	AccessToken  string `json:"access_token" mapstructure:"access_token"`
 	RefreshToken string `json:"refresh_token" mapstructure:"refresh_token"`
 	UserId       int    `json:"user_id" mapstructure:"user_id"`
 	Username     string `json:"username" mapstructure:"username"`
+}
+
+// GetAPIURL returns the API URL from config, environment variable, or default
+// Priority: 1. Config file 2. API_URL env var 3. Default production URL
+func (cfg *Config) GetAPIURL() string {
+	// Use config value if set
+	if cfg.APIUrl != "" {
+		return cfg.APIUrl
+	}
+
+	// Check environment variable
+	if envURL := os.Getenv("API_URL"); envURL != "" {
+		return envURL
+	}
+
+	// Default to production
+	return DefaultAPIURL
 }
 
 type ProjectConfig struct {
