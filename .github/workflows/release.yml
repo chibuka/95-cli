@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # macOS Intel
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+            binary_name: 95
+            artifact_name: 95-darwin-amd64
+
+          # macOS Apple Silicon
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            binary_name: 95
+            artifact_name: 95-darwin-arm64
+
+          # Linux x86_64
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            binary_name: 95
+            artifact_name: 95-linux-amd64
+
+          # Linux ARM64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            binary_name: 95
+            artifact_name: 95-linux-arm64
+
+          # Windows x86_64
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            binary_name: 95.exe
+            artifact_name: 95-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o ${{ matrix.binary_name }} .
+
+      - name: Prepare artifact (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          chmod +x ${{ matrix.binary_name }}
+          cp ${{ matrix.binary_name }} ${{ matrix.artifact_name }}
+
+      - name: Prepare artifact (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          copy ${{ matrix.binary_name }} ${{ matrix.artifact_name }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
