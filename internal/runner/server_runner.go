@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/chibuka/95-cli/client"
@@ -39,7 +38,7 @@ func (h *httpServerRunner) startServer(programConfig *client.ProgramConfig, runC
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	h.cmd.Env = env
-	h.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	h.cmd.SysProcAttr = sysProcAttr()
 
 	// Capture output for debugging
 	var stdout, stderr bytes.Buffer
@@ -110,6 +109,6 @@ func (h *httpServerRunner) stopServer() {
 		// Process exited
 	case <-time.After(2 * time.Second):
 		// Force kill
-		syscall.Kill(-h.cmd.Process.Pid, syscall.SIGKILL)
+		killProcess(-h.cmd.Process.Pid)
 	}
 }
