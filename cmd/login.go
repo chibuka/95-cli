@@ -20,25 +20,24 @@ Example:
   95 login`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Display colorful ASCII art logo
-		cyan := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
 		green := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-		red := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+		orange := lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true)
 		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 		fmt.Println()
-		fmt.Println(cyan.Render(" █████╗ ███████╗"))
-		fmt.Println(cyan.Render("██╔══██╗██╔════╝"))
-		fmt.Println(cyan.Render("╚██████║███████╗"))
-		fmt.Println(cyan.Render(" ╚═══██║╚════██║"))
-		fmt.Println(cyan.Render(" █████╔╝███████║"))
-		fmt.Println(cyan.Render(" ╚════╝ ╚══════╝"))
+		fmt.Println(orange.Render(" █████╗ ███████╗"))
+		fmt.Println(orange.Render("██╔══██╗██╔════╝"))
+		fmt.Println(orange.Render("╚██████║███████╗"))
+		fmt.Println(orange.Render(" ╚═══██║╚════██║"))
+		fmt.Println(orange.Render(" █████╔╝███████║"))
+		fmt.Println(orange.Render(" ╚════╝ ╚══════╝"))
 		fmt.Println()
 		fmt.Println(gray.Render("Build your coding skills, one challenge at a time"))
 		fmt.Println()
 
 		err := client.Login()
 		if err != nil {
-			fmt.Println(red.Render("✗ Failed to login: " + err.Error()))
+			fmt.Println(orange.Render("✗ Failed to login: " + err.Error()))
 			return err
 		}
 

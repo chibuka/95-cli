@@ -30,7 +30,10 @@ func ExecuteSetup(setup *client.TestSetup) error {
 	}
 
 	// Create files with content
-	for path, content := range setup.CreateFiles {
+	for _, file := range setup.CreateFiles {
+		path := file.Path
+		content := file.Content
+
 		// Ensure parent directory exists
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {

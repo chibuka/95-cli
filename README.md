@@ -226,7 +226,7 @@ Releases are automated via GitHub Actions.
 ## Troubleshooting
 
 ### "Authentication failed"
-Run `95 login` to re-authenticate. Your session may have expired.
+Run `95 login` to re-authenticate. Your session may have exporange.i
 
 ### "Stage not found"
 Double-check the stage UUID. You can find it on the 95 website.

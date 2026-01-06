@@ -24,20 +24,11 @@ type Config struct {
 	Username     string `json:"username" mapstructure:"username"`
 }
 
-// GetAPIURL returns the API URL from config, environment variable, or default
-// Priority: 1. Config file 2. API_URL env var 3. Default production URL
+// GetAPIURL returns the API URL
 func (cfg *Config) GetAPIURL() string {
-	// Use config value if set
-	// if cfg.APIUrl != "" {
-	// 	return cfg.APIUrl
-	// }
-
-	// // Check environment variable
-	// if envURL := os.Getenv("API_URL"); envURL != "" {
-	// 	return envURL
-	// }
-
-	// Default to production
+	if os.Getenv("DEV_MODE") == "true" {
+		return LocalAPIURL
+	}
 	return DefaultAPIURL
 }
 
@@ -59,8 +50,6 @@ func Init() {
 	}
 
 	viper.AddConfigPath(configDir)
-	viper.SetDefault("frontend_url", "https://95ninefive.dev")
-	viper.SetDefault("api_url", "https://api.95ninefive.dev")
 	viper.SetConfigName("config")
 	viper.SetConfigType("json")
 }
@@ -121,7 +110,7 @@ func LoadProjectConfig() (*ProjectConfig, error) {
 
 	v := viper.New()
 	v.AddConfigPath(currDir)
-	v.SetConfigFile("config.json")
+	v.SetConfigFile("config")
 	v.SetConfigType("json")
 
 	err = v.ReadInConfig()
@@ -148,16 +137,12 @@ func SaveProjectConfig(runCommand string, language string) error {
 
 	v := viper.New()
 	v.AddConfigPath(currDir)
-	v.SetConfigFile("config.json")
+	v.SetConfigFile("config")
 	v.SetConfigType("json")
+	v.Set("runCommand", runCommand)
+	v.Set("language", language)
 
-	cfg := ProjectConfig{
-		RunCommand: runCommand,
-		Language:   language,
-	}
-	v.Set("runCommand", cfg.RunCommand)
-	v.Set("language", cfg.Language)
-
+	// safeWriteConfig does not seem to be safe!
 	err = v.SafeWriteConfig()
 	if err != nil {
 		return v.WriteConfig()
@@ -165,6 +150,7 @@ func SaveProjectConfig(runCommand string, language string) error {
 	return nil
 }
 
+// TODO: Add other supported languages (Zig, Clojure, Ruby...)
 // DetectLanguage detects programming language from run command
 func DetectLanguage(runCommand string) string {
 	// Simple detection based on command prefix

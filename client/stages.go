@@ -12,9 +12,24 @@ import (
 )
 
 type TestConfig struct {
-	StageName string `json:"stageName"`
-	TestType  string `json:"testType"` // "cli_interactive" or "http_server"
-	Tests     []Test `json:"tests"`
+	StageName     string         `json:"stageName"`
+	TestType      string         `json:"testType"` // "cli_interactive" or "http_server"
+	ProgramConfig *ProgramConfig `json:"programConfig"`
+	ServerConfig  *ServerConfig  `json:"serverConfig"`
+	Tests         []Test         `json:"tests"`
+}
+
+// ProgramConfig defines how to run the user's program for HTTP tests
+type ProgramConfig struct {
+	Executable string            `json:"executable"`
+	Args       []string          `json:"args"`
+	Env        map[string]string `json:"env"`
+}
+
+// ServerConfig defines the server parameters for HTTP tests
+type ServerConfig struct {
+	Port          int `json:"port"`
+	StartupWaitMs int `json:"startupWaitMs"`
 }
 
 // CascadedTestConfig represents test configurations for multiple stages
@@ -37,24 +52,32 @@ type Test struct {
 	Stdin          string `json:"stdin"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	// in case testType is "http_server"
-	HttpRequests []HttpRequest `json:"httpRequests,omitempty"`
+	HttpRequests []HttpRequest `json:"httpRequests"`
 	// Setup and cleanup operations
-	Setup   *TestSetup   `json:"setup,omitempty"`
-	Cleanup *TestCleanup `json:"cleanup,omitempty"`
+	Setup   *TestSetup   `json:"setup"`
+	Cleanup *TestCleanup `json:"cleanup"`
 	// Note: assertions are stripped by backend
+}
+
+// Define a new struct for the file items
+type FileCreation struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 // TestSetup defines operations to perform before running a test
 type TestSetup struct {
-	CreateDirs  []string          `json:"createDirs,omitempty"`
-	CreateFiles map[string]string `json:"createFiles,omitempty"` // map of path -> content
-	DeleteFiles []string          `json:"deleteFiles,omitempty"` // files to delete before test (ensure clean slate)
+	CreateDirs []string `json:"createDirs"`
+	// Change this from map[string]string to []FileCreation
+	CreateFiles []FileCreation `json:"createFiles"`
+	DeleteFiles []string       `json:"deleteFiles"`
+	DeleteDirs  []string       `json:"deleteDirs"`
 }
 
 // TestCleanup defines operations to perform after running a test
 type TestCleanup struct {
-	DeleteDirs  []string `json:"deleteDirs,omitempty"`
-	DeleteFiles []string `json:"deleteFiles,omitempty"`
+	DeleteDirs  []string `json:"deleteDirs"`
+	DeleteFiles []string `json:"deleteFiles"`
 }
 
 type TestResult struct {
@@ -62,7 +85,7 @@ type TestResult struct {
 	ExitCode      int            `json:"exitCode"`
 	Stdout        string         `json:"stdout"`
 	Stderr        string         `json:"stderr"`
-	HttpResponses []HttpResponse `json:"httpResponses,omitempty"`
+	HttpResponses []HttpResponse `json:"httpResponses"`
 }
 
 type HttpResponse struct {
@@ -82,7 +105,7 @@ type SubmissionRequest struct {
 	StageUuid         string       `json:"stageUuid"`
 	Language          string       `json:"language"`
 	TestResults       []TestResult `json:"testResults"`
-	TargetStageNumber *int         `json:"targetStageNumber,omitempty"`
+	TargetStageNumber *int         `json:"targetStageNumber"`
 }
 
 type SubmissionResult struct {
@@ -105,94 +128,26 @@ func FetchCascadedTests(stageUuid string, cfg *config.Config) (*CascadedTestConf
 	apiURL := cfg.GetAPIURL()
 	endpoint := fmt.Sprintf("%s/api/stages/%s/tests", apiURL, stageUuid)
 
-	// First attempt with current access token
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.AccessToken))
-	req.Header.Set("X-User-Id", strconv.Itoa(cfg.UserId))
-
-	res, err := http.DefaultClient.Do(req)
+	body, err := sendRequest(req, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tests: %w", err)
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// If 401, try to refresh token and retry
-	if res.StatusCode == 401 {
-		fmt.Println("Access token expired. Refreshing...")
-
-		if cfg.RefreshToken == "" {
-			return nil, fmt.Errorf("authentication failed - no refresh token available\n\n→ Run '95 login' to sign in again")
-		}
-
-		// Attempt to refresh the token
-		authResponse, err := RefreshToken(cfg.RefreshToken, apiURL)
-		if err != nil {
-			return nil, fmt.Errorf("token refresh failed - %w\n\n→ Run '95 login' to re-authenticate", err)
-		}
-
-		// Update config with new tokens
-		cfg.AccessToken = authResponse.AccessToken
-		cfg.RefreshToken = authResponse.RefreshToken
-
-		// Save updated config
-		if err := cfg.Save(); err != nil {
-			return nil, fmt.Errorf("failed to save refreshed tokens: %w", err)
-		}
-
-		fmt.Println("✓ Token refreshed successfully!")
-
-		// Retry the request with new token
-		retryReq, err := http.NewRequest("GET", endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create retry request: %w", err)
-		}
-		retryReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.AccessToken))
-		retryReq.Header.Set("X-User-Id", strconv.Itoa(cfg.UserId))
-
-		retryRes, err := http.DefaultClient.Do(retryReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch tests after refresh: %w", err)
-		}
-		defer func() { _ = retryRes.Body.Close() }()
-
-		retryBody, err := io.ReadAll(retryRes.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read retry response body: %w", err)
-		}
-
-		if retryRes.StatusCode != 200 {
-			return nil, fmt.Errorf("HTTP %d - %s", retryRes.StatusCode, retryBody)
-		}
-
-		// Use retry response for final result
-		body = retryBody
-		res = retryRes
-	}
-
-	if res.StatusCode != http.StatusOK {
-		switch res.StatusCode {
-		case 401:
-			return nil, fmt.Errorf("authentication failed - your session has expired\n\n→ Run '95 login' to sign in again")
-		case 404:
-			return nil, fmt.Errorf("stage '%s' not found\n\n→ Check the UUID and try again", stageUuid)
-		case 403:
-			return nil, fmt.Errorf("access denied - you don't have permission to access this stage")
-		default:
-			errMsg := string(body)
-			if errMsg == "" {
-				errMsg = "unknown error"
+		if httpErr, ok := err.(*HttpError); ok {
+			switch httpErr.StatusCode {
+			case http.StatusUnauthorized:
+				return nil, fmt.Errorf("authentication failed - your session has expired\n\n→ Run '95 login' to sign in again")
+			case http.StatusNotFound:
+				return nil, fmt.Errorf("stage '%s' not found\n\n→ Check the UUID and try again", stageUuid)
+			case http.StatusForbidden:
+				return nil, fmt.Errorf("access denied - you don't have permission to access this stage")
+			default:
+				return nil, fmt.Errorf("HTTP %d - %s", httpErr.StatusCode, httpErr.Body)
 			}
-			return nil, fmt.Errorf("HTTP %d - %s", res.StatusCode, errMsg)
 		}
+		return nil, err
 	}
 
 	var cascadedConfig CascadedTestConfig
@@ -213,7 +168,7 @@ func ParseStageTests(stageInfo StageTestInfo) (*TestConfig, error) {
 }
 
 // FetchTests is kept for backward compatibility but now uses the cascaded endpoint
-// Returns only the tests for the requested stage (not prerequisites)
+// Returns only the tests for the requested stage
 func FetchTests(stageUuid string, cfg *config.Config) (*TestConfig, error) {
 	cascaded, err := FetchCascadedTests(stageUuid, cfg)
 	if err != nil {
@@ -244,79 +199,23 @@ func SubmitResults(stageUuid string, language string, cfg *config.Config, result
 
 	validateURL := fmt.Sprintf("%s/api/stages/validate", apiURL)
 
-	// First attempt with current access token
 	req, err := http.NewRequest("POST", validateURL, bytes.NewReader(submissionData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.AccessToken))
-	req.Header.Set("X-User-Id", strconv.Itoa(cfg.UserId))
 	req.Header.Set("Content-Type", "application/json")
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to submit results: %w", err)
-	}
-	defer func() { _ = res.Body.Close() }()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+	// Set GetBody to allow retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(submissionData)), nil
 	}
 
-	// If 401, try to refresh token and retry
-	if res.StatusCode == 401 {
-		fmt.Println("Access token expired. Refreshing...")
-
-		if cfg.RefreshToken == "" {
-			return nil, fmt.Errorf("authentication failed - no refresh token available\n\n→ Run '95 login' to sign in again")
+	body, err := sendRequest(req, cfg)
+	if err != nil {
+		if httpErr, ok := err.(*HttpError); ok {
+			return nil, fmt.Errorf("HTTP %d - %s", httpErr.StatusCode, httpErr.Body)
 		}
-
-		// Attempt to refresh the token
-		authResponse, err := RefreshToken(cfg.RefreshToken, apiURL)
-		if err != nil {
-			return nil, fmt.Errorf("token refresh failed - %w\n\n→ Run '95 login' to re-authenticate", err)
-		}
-
-		// Update config with new tokens
-		cfg.AccessToken = authResponse.AccessToken
-		cfg.RefreshToken = authResponse.RefreshToken
-
-		// Save updated config
-		if err := cfg.Save(); err != nil {
-			return nil, fmt.Errorf("failed to save refreshed tokens: %w", err)
-		}
-
-		fmt.Println("✓ Token refreshed successfully!")
-
-		// Retry the submission with new token
-		retryReq, err := http.NewRequest("POST", validateURL, bytes.NewReader(submissionData))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create retry request: %w", err)
-		}
-		retryReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.AccessToken))
-		retryReq.Header.Set("X-User-Id", strconv.Itoa(cfg.UserId))
-		retryReq.Header.Set("Content-Type", "application/json")
-
-		retryRes, err := http.DefaultClient.Do(retryReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to submit results after refresh: %w", err)
-		}
-		defer func() { _ = retryRes.Body.Close() }()
-
-		retryBody, err := io.ReadAll(retryRes.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read retry response body: %w", err)
-		}
-
-		if retryRes.StatusCode != 200 {
-			return nil, fmt.Errorf("HTTP %d - %s", retryRes.StatusCode, retryBody)
-		}
-
-		// Use retry response for final result
-		body = retryBody
-	} else if res.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d - %s", res.StatusCode, body)
+		return nil, err
 	}
 
 	var submissionResult SubmissionResult
@@ -325,4 +224,91 @@ func SubmitResults(stageUuid string, language string, cfg *config.Config, result
 	}
 
 	return &submissionResult, nil
+}
+
+type HttpError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HttpError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+func sendRequest(req *http.Request, cfg *config.Config) ([]byte, error) {
+	// Attempt the request
+	body, statusCode, err := doRequest(req, cfg.AccessToken, cfg.UserId)
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode != http.StatusUnauthorized {
+		if statusCode != http.StatusOK {
+			return nil, &HttpError{StatusCode: statusCode, Body: string(body)}
+		}
+		return body, nil
+	}
+
+	fmt.Println("Access token expired. Refreshing...")
+
+	if err := performTokenRefresh(cfg); err != nil {
+		return nil, err
+	}
+
+	// Retry the request with new token
+	body, statusCode, err = doRequest(req, cfg.AccessToken, cfg.UserId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send retry request: %w", err)
+	}
+
+	if statusCode != http.StatusOK {
+		return nil, &HttpError{StatusCode: statusCode, Body: string(body)}
+	}
+
+	return body, nil
+}
+
+// Handles the mechanics of checking, calling API, and saving config
+func performTokenRefresh(cfg *config.Config) error {
+	if cfg.RefreshToken == "" {
+		return fmt.Errorf("authentication failed - no refresh token available\n\n→ Run '95 login' to sign in again")
+	}
+
+	authResponse, err := RefreshToken(cfg.RefreshToken, cfg.GetAPIURL())
+	if err != nil {
+		return fmt.Errorf("token refresh failed - %w\n\n→ Run '95 login' to re-authenticate", err)
+	}
+
+	cfg.AccessToken = authResponse.AccessToken
+	cfg.RefreshToken = authResponse.RefreshToken
+
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("failed to save refreshed tokens: %w", err)
+	}
+
+	fmt.Println("✓ Token refreshed successfully!")
+	return nil
+}
+
+func doRequest(req *http.Request, token string, userId int) ([]byte, int, error) {
+	// Rewind body if it was read previously (for retries!)
+	if req.GetBody != nil {
+		bodyCopy, err := req.GetBody()
+		if err != nil {
+			return nil, 0, err
+		}
+		req.Body = bodyCopy
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("X-User-Id", strconv.Itoa(userId))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	return body, res.StatusCode, err
 }

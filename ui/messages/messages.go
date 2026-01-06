@@ -17,13 +17,14 @@ type StartTestMsg struct {
 
 // ResolveTestMsg is sent when a test completes
 type ResolveTestMsg struct {
-	StepIndex int
-	TestIndex int
-	Passed    *bool // nil if not yet validated, true/false after backend validation
-	Stdin     string
-	Stdout    string
-	Stderr    string
-	ExitCode  int
+	StepIndex     int
+	TestIndex     int
+	Passed        *bool // nil if not yet validated, true/false after backend validation
+	Stdin         string
+	Stdout        string
+	Stderr        string
+	ExitCode      int
+	FailureReason string
 }
 
 // ResolveStepMsg is sent when a stage/step completes

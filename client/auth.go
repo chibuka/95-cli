@@ -111,7 +111,7 @@ func startLocalServer(codeChan chan string, apiURL string) error {
 
 func handleSubmit(codeChan chan string, apiURL string) http.HandlerFunc {
 	return func(res http.ResponseWriter, req *http.Request) {
-		fmt.Printf("📥 Received %s request to /submit\n", req.Method)
+		fmt.Printf("꩜ Received %s request to /submit\n", req.Method)
 
 		res.Header().Set("Access-Control-Allow-Origin", apiURL)
 		res.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -136,7 +136,7 @@ func handleSubmit(codeChan chan string, apiURL string) http.HandlerFunc {
 			return
 		}
 
-		fmt.Println("✅ Sending OTP to channel...")
+		fmt.Println("⛩️ Sending OTP to channel...")
 		codeChan <- otp
 
 		_, _ = res.Write([]byte("Success! You can close this window."))
@@ -218,7 +218,7 @@ func Logout(accessToken string, apiURL string) error {
 	if err != nil {
 		return fmt.Errorf("failed to call logout endpoint: %w", err)
 	}
-	defer func() { _ = res.Body.Close() }()
+	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {

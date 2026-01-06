@@ -10,21 +10,23 @@ import (
 )
 
 var (
-	green = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	red   = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	gray  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	cyan  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+	green  = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	orange = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
+	// red color, unused for now
+	_    = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	gray = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
 type testModel struct {
-	name     string
-	running  bool
-	passed   *bool // nil if not yet validated, true/false after backend validation
-	stdin    string
-	stdout   string
-	stderr   string
-	exitCode int
-	shown    bool // Track if this test has been displayed
+	name          string
+	running       bool
+	passed        *bool // nil if not yet validated, true/false after backend validation
+	stdin         string
+	stdout        string
+	stderr        string
+	exitCode      int
+	failureReason string
+	shown         bool // Track if this test has been displayed
 }
 
 type stepModel struct {
@@ -55,7 +57,7 @@ func StartRenderer(isSubmit bool, ch chan messages.Msg) func(success bool, total
 
 				// Print stage header
 				header := fmt.Sprintf("Stage %02d: %s", msg.StageNumber, msg.StageName)
-				fmt.Println(cyan.Render("● ") + header)
+				fmt.Println(header)
 
 			case messages.StartTestMsg:
 				// New test starting - only store it, don't print anything
@@ -78,6 +80,7 @@ func StartRenderer(isSubmit bool, ch chan messages.Msg) func(success bool, total
 					test.stdout = msg.Stdout
 					test.stderr = msg.Stderr
 					test.exitCode = msg.ExitCode
+					test.failureReason = msg.FailureReason
 
 					// In test mode (isSubmit=false), show all tests immediately
 					// In run mode (isSubmit=true), only show validated tests (passed != nil)
@@ -107,11 +110,11 @@ func StartRenderer(isSubmit bool, ch chan messages.Msg) func(success bool, total
 			// Print final summary
 			fmt.Println()
 			if success {
-				fmt.Println(green.Render(fmt.Sprintf("✓ All %d tests passed!", totalTests)))
+				fmt.Println(orange.Render(fmt.Sprintf("✓ All %d tests passed!", totalTests)))
 				fmt.Println()
-				fmt.Println(cyan.Render("→ Check your browser for live progress updates and stage completion!"))
+				fmt.Println(gray.Render("→ Check your browser for live progress updates and stage completion!"))
 			} else {
-				fmt.Println(red.Render(fmt.Sprintf("✗ %d/%d tests passed", passedTests, totalTests)))
+				fmt.Println(orange.Render(fmt.Sprintf("✗ %d/%d tests passed", passedTests, totalTests)))
 			}
 		}
 
@@ -122,7 +125,7 @@ func StartRenderer(isSubmit bool, ch chan messages.Msg) func(success bool, total
 	}
 }
 
-// isBuildNoise checks if stderr contains only build/compilation noise (not actual errors)
+// checks if stderr contains only build/compilation noise (not actual errors)
 func isBuildNoise(stderr string) bool {
 	// Common patterns in build output that aren't actual errors
 	buildPatterns := []string{
@@ -190,7 +193,7 @@ func displayTest(test *testModel, testIndex int, totalTestsInStage int, isSubmit
 			fmt.Println()
 			for i, cmd := range commands {
 				// Print command
-				fmt.Println(indent + cyan.Render("$ ") + cmd)
+				fmt.Println(indent + orange.Render("$ ") + cmd)
 
 				// Match output for this command
 				if i < len(outputParts) {
@@ -213,10 +216,8 @@ func displayTest(test *testModel, testIndex int, totalTestsInStage int, isSubmit
 
 		// Show stderr if present (but skip common build noise)
 		if test.stderr != "" && !isBuildNoise(test.stderr) {
-			fmt.Println(indent + red.Render("Error:"))
-			for _, line := range strings.Split(strings.TrimRight(test.stderr, "\n"), "\n") {
-				fmt.Println(indent + red.Render("  "+line))
-			}
+			fmt.Println(indent + orange.Render("Error:"))
+			formatErrorOutput(test.stderr, indent)
 			fmt.Println()
 		}
 		return
@@ -228,7 +229,7 @@ func displayTest(test *testModel, testIndex int, totalTestsInStage int, isSubmit
 	if test.passed != nil && *test.passed {
 		statusIcon = green.Render("✓")
 	} else {
-		statusIcon = red.Render("✗")
+		statusIcon = orange.Render("✗")
 	}
 
 	// Print the test result line
@@ -251,7 +252,7 @@ func displayTest(test *testModel, testIndex int, totalTestsInStage int, isSubmit
 			fmt.Println()
 			for i, cmd := range commands {
 				// Print command
-				fmt.Println(indent + cyan.Render("$ ") + gray.Render(cmd))
+				fmt.Println(indent + orange.Render("$ ") + gray.Render(cmd))
 
 				// Match output for this command
 				if i < len(outputParts) {
@@ -274,11 +275,63 @@ func displayTest(test *testModel, testIndex int, totalTestsInStage int, isSubmit
 
 		// Show stderr if present (but skip common build noise)
 		if test.stderr != "" && !isBuildNoise(test.stderr) {
-			fmt.Println(indent + red.Render("Error:"))
-			for _, line := range strings.Split(strings.TrimRight(test.stderr, "\n"), "\n") {
-				fmt.Println(indent + red.Render("  "+line))
-			}
+			fmt.Println(indent + orange.Render("Error:"))
+			formatErrorOutput(test.stderr, indent)
 			fmt.Println()
+		}
+
+		if test.failureReason != "" {
+			fmt.Println(indent + orange.Render("Error: "+test.failureReason))
+			fmt.Println()
+		}
+	}
+}
+
+// formatErrorOutput formats error messages for better readability
+func formatErrorOutput(stderr string, indent string) {
+	lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		// Check if this is an HTTP request line (e.g., "GET /")
+		if strings.HasPrefix(trimmed, "GET ") || strings.HasPrefix(trimmed, "POST ") ||
+			strings.HasPrefix(trimmed, "PUT ") || strings.HasPrefix(trimmed, "DELETE ") ||
+			strings.HasPrefix(trimmed, "PATCH ") {
+			// Format as a command-like line
+			fmt.Println(indent + orange.Render("  $ ") + gray.Render(trimmed))
+		} else if strings.Contains(trimmed, "→") {
+			// Format guidance/hint lines with proper indentation
+			// Split on "→" to handle cases where it's in the middle
+			parts := strings.SplitN(trimmed, "→", 2)
+			if len(parts) == 2 {
+				before := strings.TrimSpace(parts[0])
+				guidance := strings.TrimSpace(parts[1])
+				if before != "" {
+					fmt.Println(indent + orange.Render("  "+before))
+				}
+				// Split multi-line guidance
+				guidanceLines := strings.Split(guidance, "\n")
+				for i, gline := range guidanceLines {
+					gline = strings.TrimSpace(gline)
+					if gline != "" {
+						if i == 0 {
+							fmt.Println(indent + gray.Render("  → "+gline))
+						} else {
+							fmt.Println(indent + gray.Render("    "+gline))
+						}
+					}
+				}
+			} else {
+				// Fallback: just print the line
+				fmt.Println(indent + orange.Render("  "+line))
+			}
+		} else {
+			// Regular error line
+			fmt.Println(indent + orange.Render("  "+line))
 		}
 	}
 }

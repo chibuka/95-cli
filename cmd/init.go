@@ -60,5 +60,4 @@ Examples:
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("cmd", "", "Command to run your program (e.g., 'python main.py')")
-	// Don't mark as required since we support positional argument
 }

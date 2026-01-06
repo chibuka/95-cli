@@ -1,72 +1,83 @@
 package runner
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/chibuka/95-cli/client"
 )
 
-func RunTest(runCommand string, stdin string, timeoutSeconds int) (*client.TestResult, error) {
-	splitRunCmd := strings.Fields(runCommand)
-	if len(splitRunCmd) == 0 {
-		return nil, fmt.Errorf("run command is empty")
-	}
-	cmd, args := splitRunCmd[0], splitRunCmd[1:]
+var (
+	ErrMissingContentLength = errors.New("missing content-length")
+	ErrServerTimeout        = errors.New("server timeout")
+	ErrConnectionFailed     = errors.New("connection failed")
+)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+func (h *httpServerRunner) sendRequest(req client.HttpRequest) (*client.HttpResponse, error) {
+	url := fmt.Sprintf("http://localhost:%d%s", h.port, req.Path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	execCmd := exec.CommandContext(ctx, cmd, args...)
-
-	var stdoutBuffer bytes.Buffer
-	var stderrBuffer bytes.Buffer
-	execCmd.Stdout = &stdoutBuffer
-	execCmd.Stderr = &stderrBuffer
-
-	stdinPipe, err := execCmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+	var bodyReader io.Reader
+	if req.Body != "" {
+		bodyReader = strings.NewReader(req.Body)
 	}
 
-	// this is non-blocking
-	err = execCmd.Start()
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, url, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start command: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// sending test input
-	_, err = stdinPipe.Write([]byte(stdin))
-	if err != nil {
-		return nil, fmt.Errorf("failed to write stdin: %w", err)
+	for k, v := range req.Headers {
+		httpReq.Header.Set(k, v)
 	}
 
-	err = stdinPipe.Close()
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DisableCompression: true,
+		},
+	}
+	resp, err := httpClient.Do(httpReq)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to close stdin pipe: %w", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, ErrServerTimeout
+		}
+		return nil, fmt.Errorf("could not connect to server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.ContentLength == -1 {
+		// -1 indicates the header was missing or invalid (chunked)
+		return nil, ErrMissingContentLength
 	}
 
-	err = execCmd.Wait()
-
-	exitCode := 0
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		// check if it's a non-zero exit code (expected)
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			// Some other error (timeout, command not found, etc.)
-			return nil, fmt.Errorf("command execution failed: %w", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf(
+				"server took too long to send response body (timeout after 30s)",
+			)
+		}
+		return nil, fmt.Errorf("could not read server response: %w", err)
+	}
+
+	headers := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
 		}
 	}
 
-	// TestName is empty because the caller will fill it in
-	return &client.TestResult{
-		ExitCode: exitCode,
-		Stdout:   stdoutBuffer.String(),
-		Stderr:   stderrBuffer.String(),
+	return &client.HttpResponse{
+		StatusCode: resp.StatusCode,
+		Body:       string(body),
+		Headers:    headers,
 	}, nil
 }

@@ -20,11 +20,11 @@ Your code runs locally, gets validated server-side, and tracks your progress.
 
 Quick Start:
   1. Authenticate:      95 login
-  2. Setup project:     95 init --cmd "python main.py"
+  2. Setup project (e.g: go code):     95 init --cmd "go run ."
   3. Test locally:      95 test <stage-uuid>
   4. Submit solution:   95 run <stage-uuid>
 
-For more information, visit: https://95.dev`,
+For more information, visit: https://95ninefive.dev`,
 }
 
 func Execute() {

@@ -32,7 +32,7 @@ Example:
 		apiURL := cfg.GetAPIURL()
 		err = client.Logout(cfg.AccessToken, apiURL)
 		if err != nil {
-			fmt.Println("⚠ Could not notify server, but clearing local credentials...")
+			fmt.Println("Could not notify server, but clearing local credentials...")
 		}
 
 		err = config.Clear()
