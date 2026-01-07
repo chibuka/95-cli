@@ -4,6 +4,8 @@
 
 A command-line tool for practicing coding challenges with real-time validation and progress tracking. Your code runs locally, gets validated server-side, and tracks your progress as you level up your skills.
 
+<img width="1153" height="318" alt="Screenshot 2026-01-07 at 17 22 15" src="https://github.com/user-attachments/assets/a7329be3-63b0-477a-830b-fbe356ed2985" />
+
 ## Features
 
 - **GitHub OAuth Authentication** - Secure login with your GitHub account
